@@ -395,6 +395,15 @@
             return () => 15;
           if (prop === "defaultSamRange" && typeof sc.defaultSamRange !== "function")
             return () => 70;
+          if (prop === "nukeSpeed" && typeof sc.nukeSpeed !== "function")
+            return (type) => {
+              if (type === UNIT.AtomBomb || type === UNIT.HydrogenBomb) return 10;
+              if (type === UNIT.MIRV) return 15;
+              if (type === UNIT.MIRVWarhead) return 22;
+              throw new Error("Unknown nuke type: " + type);
+            };
+          if (prop === "defaultNukeTargetableRange" && typeof sc.defaultNukeTargetableRange !== "function")
+            return () => 150;
           if (prop === "maxTroops") return (p) => sc.maxTroops(unwrap(p));
           const v = t[prop];
           return typeof v === "function" ? v.bind(t) : v;

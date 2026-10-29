@@ -937,7 +937,7 @@
     // ── isTrajectoryInterceptableBySam — NationNukeBehavior.ts:547 ────────────
     // mirroring NukeTrajectoryPreviewLayer.ts logic a bit
     isTrajectoryInterceptableBySam(spawnTile, targetTile, excludedSamIds) {
-      const speed = this.game.config().defaultNukeSpeed();
+      const speed = this.game.config().nukeSpeed(UNIT.AtomBomb);
       const pathFinder = UniversalPathFinding.Parabola(this.game, {
         increment: speed,
         distanceBasedHeight: true, // Atom/Hydrogen bombs use distance-based height
@@ -1268,7 +1268,7 @@
         // distance to target (via nukeSpawn). Our planning must mirror that order.
         // Silos with interceptable trajectories will still be picked first by
         // NukeExecution — their bombs launch but get intercepted, "wasting" slots.
-        const nukeSpeed = this.game.config().defaultNukeSpeed();
+        const nukeSpeed = this.game.config().nukeSpeed(UNIT.AtomBomb);
         const allAvailableSilos = [];
         for (const silo of ourSilos) {
           const availableSlots = silo.level() - silo.missileTimerQueue().length;
