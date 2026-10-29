@@ -551,6 +551,15 @@
         return false;
       }
 
+      // Selection can await several worker calls; recheck the chosen landing
+      // against the latest state before emitting the transport intent.
+      if (!Number.isInteger(dst) || this.game.ownerID(dst) === this.player.smallID())
+        return false;
+      const finalSpawn = await withTimeout(
+        this.player.bestTransportShipSpawn(dst), WORKER_TIMEOUT_MS, false,
+      );
+      if (finalSpawn === false || finalSpawn == null) return false;
+
       const frac = state.settings.boatProbeFrac || 0.01;
       const floor = state.settings.boatProbeMinTroops || 8000;
       const troops = Math.max(this.player.troops() * frac, floor);
@@ -562,7 +571,7 @@
             : "🏝️ Island grab"
           : "🛟 Probe landing";
       if (this.emitBoat(dst, troops, label)) {
-        console.log("[Boat] LAUNCHED", label, Math.round(troops), "troops");
+        console.log("[Boat] intent sent", label, Math.round(troops), "troops");
         state.lastOppBoatMs = nowMs;
         state.beachhead = { tile: dst, at: this.game.ticks(), surged: false };
         return true;

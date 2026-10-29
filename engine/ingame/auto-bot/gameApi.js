@@ -379,6 +379,20 @@
       _srcConfig = sc;
       _configProxy = new Proxy(sc, {
         get(t, prop) {
+          // EngineConfig methods omitted from the client Config surface.
+          // Mirror packages/engine/src/configuration/EngineConfig.ts.
+          if (prop === "boatMaxNumber" && typeof sc.boatMaxNumber !== "function")
+            return () => sc.isUnitDisabled(UNIT.TransportShip) ? 0 : 3;
+          if (prop === "startingGold" && typeof sc.startingGold !== "function")
+            return (info) => {
+              if (info.playerType === PlayerType.Bot) return 0n;
+              const gc = sc.gameConfig();
+              const base = BigInt(gc.startingGold ?? 0);
+              return base + (info.isLobbyCreator
+                ? BigInt(gc.hostCheats?.startingGold ?? 0) : 0n);
+            };
+          if (prop === "trainStationMinRange" && typeof sc.trainStationMinRange !== "function")
+            return () => 15;
           if (prop === "maxTroops") return (p) => sc.maxTroops(unwrap(p));
           const v = t[prop];
           return typeof v === "function" ? v.bind(t) : v;

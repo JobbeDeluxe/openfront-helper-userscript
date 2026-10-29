@@ -764,8 +764,12 @@
               : false,
         };
         this._hasHighStartingGold =
+          // Some client versions do not expose startingGold. In that case
+          // skip the optional high-starting-gold pacing rather than aborting
+          // the entire decision chain (including expansion and attacks).
+          typeof this.game.config().startingGold === "function" &&
           this.game.config().startingGold(playerInfo) >=
-          HIGH_STARTING_GOLD_THRESHOLD;
+            HIGH_STARTING_GOLD_THRESHOLD;
       }
       return this._hasHighStartingGold;
     }

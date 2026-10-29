@@ -13,6 +13,7 @@
 // Also sends an extra keep-alive ping every 15s when the tab is hidden, as a
 // safety net in case the game's own ping interval somehow stalls.
 
+let setAntiAfkEnabled;
 (function initAntiAfk() {
   var _worker = null;
   var _intervalCallbacks = {};   // workerId → callback
@@ -129,7 +130,7 @@
 
   // ---- Feature toggle ----
 
-  function setAntiAfkEnabled(enabled) {
+  setAntiAfkEnabled = function(enabled) {
     antiAfkEnabled = !!enabled;
     if (antiAfkEnabled) {
       _startKeepAlive();
