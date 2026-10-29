@@ -650,6 +650,9 @@
       magnitude: mapM("magnitude"),
       hasFallout: mapM("hasFallout"),
       neighbors: mapM("neighbors"),
+      forEachNeighbor: (tile, callback) => {
+        for (const neighbor of src.neighbors(tile)) callback(neighbor);
+      },
       manhattanDist: mapM("manhattanDist"),
       euclideanDistSquared: mapM("euclideanDistSquared"),
       terrainType: (t) =>
