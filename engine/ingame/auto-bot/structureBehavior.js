@@ -1057,7 +1057,15 @@
         if (!buildMenu || typeof buildMenu.sendBuildOrUpgrade !== "function") {
           return false;
         }
-        buildMenu.sendBuildOrUpgrade(result.bu);
+        // Candidate scoring awaits worker responses. The unit may have changed
+        // ownership or begun construction in the meantime; verify it again.
+        const unit = this.player.units(result.structure.type()).find(
+          (u) => u.id() === result.structure.id(),
+        );
+        if (!unit || !unit.isActive() || unit.isUnderConstruction()) return false;
+        const fresh = await this.buildableFor(unit.type(), unit.tile());
+        if (!fresh || fresh.canUpgrade !== unit.id()) return false;
+        buildMenu.sendBuildOrUpgrade(fresh, unit.tile());
         state.stats.builds++;
         setLastAction(
           tr("⬆️ Upgrade {type}", { type: result.structure.type() }),
@@ -1093,6 +1101,7 @@
       const upgradable = [];
       const buByUnitId = new Map();
       for (const s of structures) {
+        if (!s.isActive() || s.isUnderConstruction()) continue;
         const bu = await this.buildableFor(s.type(), s.tile());
         if (bu !== null && bu.canUpgrade !== false) {
           upgradable.push(s);
