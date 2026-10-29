@@ -393,6 +393,8 @@
             };
           if (prop === "trainStationMinRange" && typeof sc.trainStationMinRange !== "function")
             return () => 15;
+          if (prop === "defaultSamRange" && typeof sc.defaultSamRange !== "function")
+            return () => 70;
           if (prop === "maxTroops") return (p) => sc.maxTroops(unwrap(p));
           const v = t[prop];
           return typeof v === "function" ? v.bind(t) : v;
