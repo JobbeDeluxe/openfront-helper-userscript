@@ -58,6 +58,11 @@
 //
 // Loaded with the other behavior modules (after portutil/gameApi), before
 // nationExecution (which constructs `new StructureBehavior(random, game, player)`).
+//
+// 2026-10-29 economy update: selectively sync current NationStructureBehavior
+// ratios, crowded-map opening, savings policy and no-space upgrade fallback.
+// This is NOT a full port of the latest combat/placement/SAM/batch-upgrade AI.
+// Existing winFixes and client adaptations remain; see docs/factory-update.md.
 
 "use strict";
 
@@ -77,9 +82,12 @@
    * Returns structure ratios relative to city count, adjusted by difficulty.
    * Cities are always prioritized and built first.
    */
-  function getStructureRatios(difficulty) {
+  function getStructureRatios(difficulty, gameMode) {
     return {
-      [UNIT.Port]: { ratioPerCity: 0.75, perceivedCostIncreasePerOwned: 1 },
+      [UNIT.Port]: {
+        ratioPerCity: gameMode === GameMode.Team && difficulty !== Difficulty.Easy ? 1 : 0.75,
+        perceivedCostIncreasePerOwned: 1,
+      },
       [UNIT.Factory]: {
         ratioPerCity: 0.75,
         perceivedCostIncreasePerOwned: 1,
@@ -98,8 +106,32 @@
   /** Perceived cost increase percentage per city owned */
   const CITY_PERCEIVED_COST_INCREASE_PER_OWNED = 1;
 
-  /** Factory ratio multiplier when the nation has coastal tiles */
-  const FACTORY_COASTAL_RATIO_MULTIPLIER = 0.33;
+  // Economy policy synced from OpenFront 757296862da5 (2026-10-29),
+  // packages/engine/src/execution/nation/NationStructureBehavior.ts / NationUtils.ts.
+  const FACTORY_COASTAL_RATIO_MULTIPLIER = {
+    [Difficulty.Easy]: 0.33,
+    [Difficulty.Medium]: 0.45,
+    [Difficulty.Hard]: 0.55,
+    [Difficulty.Impossible]: 0.6,
+  };
+  const CITIES_BEFORE_SAVING = {
+    [Difficulty.Easy]: 0,
+    [Difficulty.Medium]: 3,
+    [Difficulty.Hard]: 4,
+    [Difficulty.Impossible]: 5,
+  };
+  const INCOME_STRUCTURE_SAVING_WEIGHT = {
+    [Difficulty.Easy]: 1,
+    [Difficulty.Medium]: 0.8,
+    [Difficulty.Hard]: 0.6,
+    [Difficulty.Impossible]: 0.4,
+  };
+  const SAVE_UP_HORIZON_MINUTES = {
+    [Difficulty.Easy]: Infinity,
+    [Difficulty.Medium]: Infinity,
+    [Difficulty.Hard]: 5,
+    [Difficulty.Impossible]: 6,
+  };
 
   /** Maximum number of missile silos a nation will build */
   const MAX_MISSILE_SILOS = 3;
@@ -275,6 +307,7 @@
       this._sharedWaterComponents = null;
       this.lastStructureTick = null;
       this.placementsCount = 0;
+      this.builtCrowdedMapFirstStructure = false;
       this._hasHighStartingGold = null;
       this._postSaveUpStartTick = null;
     }
@@ -609,12 +642,7 @@
       this.reachableStationsCache = null;
       const config = this.game.config();
       const citiesDisabled = config.isUnitDisabled(UNIT.City);
-      const cityCount = citiesDisabled
-        ? Math.max(
-            1,
-            Math.floor(this.player.numTilesOwned() / TILES_PER_CITY_EQUIVALENT),
-          )
-        : this.ownedLevels(UNIT.City);
+      const cityCount = this.cityCount();
       // sharedWaterComponents → real Set<number>|null from gameApi's cached
       // full-resolution water union-find (core SharedWaterCache predicate).
       this._sharedWaterComponents = shimSharedWaterComponents(
@@ -677,17 +705,19 @@
       // On crowded maps the first structure is a port (or factory if landlocked).
       if (
         !citiesDisabled &&
-        this.ownedLevels(UNIT.City) === 0 &&
+        !this.builtCrowdedMapFirstStructure &&
         this.isHighNationDensity()
       ) {
         const preferredFirst =
           hasCoastalTiles && !config.isUnitDisabled(UNIT.Port)
             ? UNIT.Port
             : UNIT.Factory;
-        if (
-          !config.isUnitDisabled(preferredFirst) &&
-          (await this.maybeSpawnStructure(preferredFirst))
-        ) {
+        // One successful income opening only: using cityCount === 0 here
+        // repeats ports/factories forever and prevents the first city.
+        if (config.isUnitDisabled(preferredFirst) || !autoBotBuildAllowed(preferredFirst)) {
+          this.builtCrowdedMapFirstStructure = true;
+        } else if (await this.maybeSpawnStructure(preferredFirst)) {
+          this.builtCrowdedMapFirstStructure = true;
           return true;
         }
       }
@@ -825,7 +855,7 @@
     shouldBuildStructure(type, cityCount, hasCoastalTiles) {
       const gameConfig = this.game.config();
       const difficulty = currentDifficulty();
-      const ratios = getStructureRatios(difficulty);
+      const ratios = getStructureRatios(difficulty, gameConfig.gameConfig().gameMode);
       const config = ratios[type];
       if (config === undefined) {
         return false;
@@ -842,9 +872,11 @@
         type === UNIT.Factory &&
         hasCoastalTiles &&
         !gameConfig.isUnitDisabled(UNIT.Port) &&
+        // DIVERGENCE: a user-disabled auto-port cannot substitute for factories.
+        autoBotBuildAllowed(UNIT.Port) &&
         !this._dominant
       ) {
-        ratio *= FACTORY_COASTAL_RATIO_MULTIPLIER;
+        ratio *= FACTORY_COASTAL_RATIO_MULTIPLIER[difficulty];
       }
 
       const owned = this.ownedLevels(type);
@@ -965,7 +997,11 @@
       // addExecution(ConstructionExecution).
       const bu = await this.structureSpawnTile(type);
       if (bu === null) {
-        return false;
+        // Current Nation AI upgrades when no new site is available, even on
+        // a large territory with low overall structure density.
+        return this.game.config().unitInfo(type).upgradable === true &&
+          currentDifficulty() !== Difficulty.Easy &&
+          await this.maybeUpgradeStructure(structures);
       }
       const buildMenu = getBuildMenu();
       if (!buildMenu || typeof buildMenu.sendBuildOrUpgrade !== "function") {
@@ -977,14 +1013,37 @@
       return true;
     }
 
-    // getPerceivedCost — NationStructureBehavior.ts:627.
+    cityCount() {
+      return this.game.config().isUnitDisabled(UNIT.City)
+        ? Math.max(1, Math.floor(this.player.numTilesOwned() / TILES_PER_CITY_EQUIVALENT))
+        : this.ownedLevels(UNIT.City);
+    }
+
+    isSaveUpWithinReach(target) {
+      const horizon = SAVE_UP_HORIZON_MINUTES[currentDifficulty()];
+      const missing = Number(target - this.player.gold());
+      if (horizon === Infinity || missing <= 0) return true;
+      const earned = this.player.goldEarned?.();
+      // DIVERGENCE: older clients without cumulative income retain the old
+      // saving gate; do not invent an income estimate from the gold balance.
+      if (earned == null || !Number.isFinite(Number(earned))) return true;
+      const minutes = Math.max(1, this.game.ticks() / 600);
+      const incomePerMinute = (2 * Number(earned)) / minutes;
+      return missing <= incomePerMinute * horizon;
+    }
+
+    // Current Nation economy: establish income before saving for nukes.
     getPerceivedCost(type) {
       const realCost = this.cost(type);
 
       const saveUpTarget = this.getSaveUpTarget();
-      if (saveUpTarget === 0n || this.player.gold() >= saveUpTarget) {
+      if (saveUpTarget === 0n || this.player.gold() >= saveUpTarget ||
+          !this.isSaveUpWithinReach(saveUpTarget)) {
         return realCost;
       }
+
+      const difficulty = currentDifficulty();
+      if (this.cityCount() < CITIES_BEFORE_SAVING[difficulty]) return realCost;
 
       const owned = this.ownedLevels(type);
 
@@ -992,13 +1051,16 @@
       if (type === UNIT.City) {
         increasePerOwned = CITY_PERCEIVED_COST_INCREASE_PER_OWNED;
       } else {
-        const difficulty = currentDifficulty();
-        const ratios = getStructureRatios(difficulty);
+        const ratios = getStructureRatios(difficulty, this.game.config().gameConfig().gameMode);
         const config = ratios[type];
         increasePerOwned =
           config && config.perceivedCostIncreasePerOwned !== undefined
             ? config.perceivedCostIncreasePerOwned
             : 0.1;
+      }
+
+      if (type === UNIT.City || type === UNIT.Port || type === UNIT.Factory) {
+        increasePerOwned *= INCOME_STRUCTURE_SAVING_WEIGHT[difficulty];
       }
 
       // realCost * (1 + increasePerOwned * owned)
@@ -1042,9 +1104,6 @@
 
     // maybeUpgradeStructure — NationStructureBehavior.ts:696 (now async).
     async maybeUpgradeStructure(structures) {
-      if (this.getTotalStructureDensity() <= UPGRADE_DENSITY_THRESHOLD) {
-        return false;
-      }
       if (structures.length === 0) {
         return false;
       }

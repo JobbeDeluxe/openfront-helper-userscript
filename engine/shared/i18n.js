@@ -19,6 +19,7 @@
   ];
 
   const DEFAULT_TRANSLATIONS = {
+    "Legacy extra strategies": "Legacy extra strategies",
     languageCode: "en",
     languageName: "English",
     settings: "Settings",

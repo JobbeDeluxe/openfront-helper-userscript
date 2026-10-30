@@ -1,5 +1,11 @@
 # Auto-Bot
 
+The `1.13.0-ai.1` revision loads `currentAI.js` after the older behavior
+modules. Its current upstream coverage, browser adaptations and optional legacy
+strategies are documented in [docs/current-ai.md](../../../docs/current-ai.md).
+The historical architecture notes below describe the older port; the userscript's
+actual load order is maintained in `build.mjs`.
+
 Training tool for OpenFront lobbies. Plays the local human
 player automatically (auto-spawn, auto-expand / conquer, auto-build, nukes,
 warships, alliances) by reading the client-side `GameView`/`PlayerView` and

@@ -73,6 +73,7 @@ const INGAME_FILES = [
   "auto-bot/structureBehavior.js",
   "auto-bot/attackBehavior.js",
   "auto-bot/nukeBehavior.js",
+  "auto-bot/currentAI.js",
   "auto-bot/nationExecution.js",
   "auto-bot/engine.js",
   "auto-bot/panel.js",
@@ -157,6 +158,8 @@ function metadataHeader(version) {
 // @updateURL    ${raw}
 // @downloadURL  ${raw}
 // @contributionURL https://greasyfork.org/en/scripts/581664-openfront-tactical-assistant
+// Nation AI portions: © OpenFront and Contributors, AGPL-3.0.
+// Local adapted policy baseline: openfrontio/openfrontio 757296862da5.
 // Credits: in-game overlays adapted from phil0010-gh/openfront-helper; several
 // helper/auto-bot features (spawn scoring/heatmap, advisor, threat intel, map
 // overlays) reference OpenFront Tactical Assistant:

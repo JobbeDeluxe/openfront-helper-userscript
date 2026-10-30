@@ -270,6 +270,8 @@
     const bm = getBuildMenu();
     const me = game?.myPlayer?.();
     const diag = {
+        aiRevision: state.currentAI?.revision ?? "legacy",
+        legacyExtraStrategies: state.settings.winFixes === true,
       game: !!game,
       gameType: game ? gameType(game) : null,
       inSpawnPhase: game?.inSpawnPhase?.() ?? null,

@@ -375,7 +375,7 @@
 
             <div class="ab-cfg-sec">${tr("Advanced")}</div>
             <div class="ab-cfg-row">
-              <span class="ab-cfg-label">${tr("Win-condition fixes")}</span>
+              <span class="ab-cfg-label">${tr("Legacy extra strategies")}</span>
               <div class="ab-cfg-sw ${state.settings.winFixes ? "on" : ""}" data-cfg="winFixes"></div>
             </div>
             <div class="ab-cfg-row">

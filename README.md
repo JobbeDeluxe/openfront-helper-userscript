@@ -1,11 +1,20 @@
 # OpenFront Helper
 
-> GitHub: <https://github.com/nguyenvancaokyfpt/openfront-helper-userscript>
+> GitHub: <https://github.com/JobbeDeluxe/openfront-helper-userscript>
+> Original project: <https://github.com/nguyenvancaokyfpt/openfront-helper-userscript>
 > Greasy Fork: <https://greasyfork.org/en/scripts/584309-openfront-helper-userscript>
 
 A single `.user.js` for [OpenFront.io](https://openfront.io/) that adds **auto-join**, **in-game intelligence overlays**, and a **training bot** — all configurable from a built-in multi-language popup, no extension required.
 
 Works with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), and [quoid/Userscripts (Safari)](https://github.com/quoid/userscripts).
+
+## AI update — 1.13.0-ai.1
+
+This version updates factory/economy behavior and major attack, transport, fleet,
+nuclear and SAM decisions using OpenFront's Nation AI at revision `757296862da5`.
+Legacy extra strategies are optional and disabled by default. See the
+[coverage, installation notes and known limitations](docs/current-ai.md).
+Automated checks pass; live-match performance has not yet been verified.
 
 ---
 
@@ -13,7 +22,7 @@ Works with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https:
 
 1. Install a userscript manager (Tampermonkey or Violentmonkey).
 2. Click the install link — your manager shows the install prompt; confirm it:
-   <https://raw.githubusercontent.com/nguyenvancaokyfpt/openfront-helper-userscript/main/openfront-helper.user.js>
+   <https://raw.githubusercontent.com/JobbeDeluxe/openfront-helper-userscript/main/openfront-helper.user.js>
 3. Open <https://openfront.io/>. A draggable **⊕** icon appears in the corner — click it to open the settings popup.
 
 Auto-updates via the manager's built-in `@updateURL` check.

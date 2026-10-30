@@ -50,6 +50,7 @@
 
   function createGameApi(src) {
     const playerCache = new Map(); // smallID -> wrapped player
+    const unitCache = new Map(); // stable identity for SAM/strike tracking
     const borderCache = new Map(); // smallID -> { tick, set:Set<TileRef> }
     // Relation overlay: ONLY the AI-subjective deltas WE issue this game
     // (embargo malus ±20, assist −20, warship −7.5/−15). The engine-applied
@@ -74,9 +75,11 @@
     // ── unit wrapper: delegate to the src unit, wrap owner() ──────────────────
     function wrapUnit(u) {
       if (u == null) return u;
+      const cached = unitCache.get(u.id());
+      if (cached) { cached.__src = u; return cached; }
       const m = (name, dflt) => (...a) =>
         typeof u[name] === "function" ? u[name](...a) : dflt;
-      return {
+      const wrapped = {
         __src: u,
         owner: () => wrapPlayer(u.owner()),
         type: m("type", null),
@@ -84,6 +87,7 @@
         level: m("level", 1),
         id: m("id", null),
         isActive: m("isActive", false),
+        reachedTarget: m("reachedTarget", false),
         isUnderConstruction: m("isUnderConstruction", false),
         isInCombat: m("isInCombat", false),
         hasTrainStation: m("hasTrainStation", false),
@@ -96,6 +100,9 @@
         ticksLeftInCooldown: m("ticksLeftInCooldown", 0),
         lastSetSafeFromPirates: m("lastSetSafeFromPirates", undefined),
       };
+      Object.defineProperty(wrapped, "__src", { get: () => u, set: value => { u = value; } });
+      unitCache.set(u.id(), wrapped);
+      return wrapped;
     }
 
     // Client AttackUpdate (PlayerView.incomingAttacks) is a PLAIN object with
@@ -186,6 +193,7 @@
         displayName: pass("displayName", "?"),
         troops: () => Number(core.troops?.() ?? 0),
         gold: () => core.gold?.() ?? 0n,
+        goldEarned: pass("goldEarned", null),
         numTilesOwned: () => Number(core.numTilesOwned?.() ?? 0),
         team: pass("team", null),
         maxTroops: () => api.config().maxTroops(w),
@@ -194,7 +202,10 @@
         betrayals: pass("betrayals", 0),
         getTraitorRemainingTicks: pass("getTraitorRemainingTicks", 0),
 
-        units: (...types) => core.units(...types).map(wrapUnit),
+        units: (...types) => core.units(...types.flat()).map(wrapUnit),
+        get largestClusterBoundingBox() {
+          return core.largestClusterBoundingBox ?? (w.borderTiles().size ? calculateBoundingBox(api, w.borderTiles()) : null);
+        },
         unitCount: (type) => core.units(type).length,
         // unitsOwned/unitsConstructed — core semantics: built (not under
         // construction) units of a type.
@@ -216,7 +227,14 @@
           core.transitiveTargets ? core.transitiveTargets().map(wrapPlayer) : [],
         alliances: () => (core.alliances ? core.alliances() : []),
 
-        isFriendly: (o) => core.isFriendly(unwrap(o)),
+        isFriendly: (o, treatAFKFriendly = false) => {
+          const other = unwrap(o);
+          if (!other?.isPlayer?.()) return false;
+          if (other.smallID() === core.smallID()) return true;
+          // PlayerView omits core's self/AFK rules and the optional AFK flag.
+          if (other.isDisconnected?.() && !treatAFKFriendly) return false;
+          return core.isOnSameTeam(other) || core.isAlliedWith(other);
+        },
         isAlliedWith: (o) => core.isAlliedWith(unwrap(o)),
         isOnSameTeam: (o) => core.isOnSameTeam(unwrap(o)),
         isRequestingAllianceWith: (o) =>
@@ -283,6 +301,9 @@
         actions: (tile, units) =>
           core.actions ? core.actions(tile, units) : Promise.resolve(null),
       };
+      // Cached wrappers must read the latest PlayerView, not the first object
+      // captured by the accessors when this player joined.
+      Object.defineProperty(w, "__src", { get: () => core, set: value => { core = value; } });
       return w;
     }
 
@@ -395,6 +416,10 @@
             return () => 15;
           if (prop === "defaultSamRange" && typeof sc.defaultSamRange !== "function")
             return () => 70;
+          if (prop === "warshipTargettingRange" && typeof sc.warshipTargettingRange !== "function")
+            return () => 130;
+          if (prop === "warshipPatrolRange" && typeof sc.warshipPatrolRange !== "function")
+            return () => 100;
           if (prop === "nukeSpeed" && typeof sc.nukeSpeed !== "function")
             return (type) => {
               if (type === UNIT.AtomBomb || type === UNIT.HydrogenBomb) return 10;
@@ -405,6 +430,7 @@
           if (prop === "defaultNukeTargetableRange" && typeof sc.defaultNukeTargetableRange !== "function")
             return () => 150;
           if (prop === "maxTroops") return (p) => sc.maxTroops(unwrap(p));
+          if (prop === "maxTroopsWithoutCities") return (p) => typeof sc.maxTroopsWithoutCities === "function" ? sc.maxTroopsWithoutCities(unwrap(p)) : sc.maxTroops(unwrap(p));
           const v = t[prop];
           return typeof v === "function" ? v.bind(t) : v;
         },
@@ -610,9 +636,9 @@
       myPlayer: () => mePlayer,
       players: () => src.players().map(wrapPlayer),
       playerViews: () => src.players().map(wrapPlayer),
-      playerBySmallID: (sid) => wrapPlayer(src.playerBySmallID(sid)),
+      playerBySmallID: (sid) => sid == null || sid === 0 ? api.terraNullius() : wrapPlayer(srcPlayerBySmallID(sid)),
       nations: () =>
-        (src.nations ? src.nations() : src.players().filter((p) => p.type?.() === "Nation")).map(
+        (src.nations ? src.nations() : src.players().filter((p) => p.type?.() === PlayerType.Nation)).map(
           wrapPlayer,
         ),
       terraNullius: () => {
@@ -627,7 +653,7 @@
       numTilesWithFallout: () =>
         typeof src.numTilesWithFallout === "function" ? src.numTilesWithFallout() : 0,
       getWinner: () => (typeof src.getWinner === "function" ? src.getWinner() : null),
-      units: (...types) => src.units(...types).map(wrapUnit),
+      units: (...types) => src.units(...types.flat()).map(wrapUnit),
       unitCount: (type) => src.units(type).length,
       // GameMap surface (sync passthrough)
       ref: mapM("ref"),
@@ -642,6 +668,10 @@
           ? src.isOnMap(cell)
           : src.isValidCoord(cell.x, cell.y),
       isLand: mapM("isLand"),
+      isImpassable: (t) => typeof src.isImpassable === "function" ? src.isImpassable(t) : false,
+      map: () => api,
+      neighbors4: (t, buffer) => { const list = src.neighbors(t); for (let i=0;i<list.length;i++) buffer[i]=list[i]; return list.length; },
+      isOnEdgeOfMap: (t) => src.x(t) === 0 || src.y(t) === 0 || src.x(t) === src.width()-1 || src.y(t) === src.height()-1,
       isWater: mapM("isWater"),
       isOcean: mapM("isOcean"),
       isShore: mapM("isShore"),
@@ -658,7 +688,7 @@
       terrainType: (t) =>
         typeof src.terrainType === "function" ? src.terrainType(t) : null,
       nearbyUnits: (...a) =>
-        typeof src.nearbyUnits === "function" ? src.nearbyUnits(...a) : [],
+        typeof src.nearbyUnits === "function" ? src.nearbyUnits(...a).map(entry => ({ ...entry, unit: wrapUnit(entry.unit) })) : [],
       hasUnitNearby: (...a) =>
         typeof src.hasUnitNearby === "function" ? src.hasUnitNearby(...a) : false,
 
@@ -741,6 +771,9 @@
     async function beginTick(meCorePlayer) {
       mePlayer = wrapPlayer(meCorePlayer);
       const tick = src.ticks();
+      // Trackers hold their own references until impact/landing; the identity
+      // cache only needs live units and must not grow for every destroyed ship.
+      for (const [id, unit] of unitCache) if (!unit.isActive()) unitCache.delete(id);
 
       // decay overlay 0.05/tick toward 0 (PlayerImpl.decayRelations) — once per
       // game tick crossed.

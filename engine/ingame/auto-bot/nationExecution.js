@@ -139,6 +139,8 @@
         return;
       }
 
+      if (!me.hasSpawned()) return;
+
       // ── first live tick — NationExecution.ts:170-174 ─────────────────────────
       if (!this.behaviorsInitialized) {
         this.initializeBehaviors();
@@ -150,6 +152,9 @@
       }
 
       // ── tick gating (edge-detected over the elapsed window) — NationExecution.ts:176 ─
+      // Current upstream runs landing/strike follow-ups between decision ticks.
+      this.attackBehavior.followUpLandings();
+      this.nukeBehavior.followUpStrikes();
       const from = this.lastSeenTick < 0 ? ticks : this.lastSeenTick + 1;
       this.lastSeenTick = ticks;
       // WIN-FIX (combatCadenceScale): <1 shrinks the effective attack interval so
@@ -249,6 +254,7 @@
         this.emojiBehavior,
       );
       this.structureBehavior = new StructureBehavior(r, g, p);
+      this.attackBehavior.warshipBehavior = this.warshipBehavior;
       this.behaviorsInitialized = true;
     }
 

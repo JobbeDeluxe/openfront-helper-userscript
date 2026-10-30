@@ -62,7 +62,8 @@
     //    the bot snowball to an 80% victory AND play more ACTIVELY than a pure
     //    faithful Nation, which is conservative/turtle by design). Toggle winFixes
     //    OFF to restore the exact 1:1 src port. ──
-    winFixes: true,
+    winFixes: false,
+    policyVersion: "current-2026-10-29",
     // DIVERGENCE: smart spawn scoring — scores candidate tiles by land density,
     // plains ratio, distance from enemies, and edge avoidance, then picks the
     // best instead of the first valid random tile. Toggle OFF to restore the
@@ -308,6 +309,7 @@
       "enabled",
       "difficulty",
       "winFixes",
+      "policyVersion",
       "smartSpawn",
       "minimized",
       "hidden",
@@ -342,6 +344,13 @@
           ...DEFAULTS.buildStructures,
           ...(parsed.buildStructures || {}),
         };
+        // One-time migration requested for the current original AI baseline.
+        // Later user changes to the optional legacy strategies remain persisted.
+        if (parsed.policyVersion !== DEFAULTS.policyVersion) {
+          s.winFixes = false;
+          s.policyVersion = DEFAULTS.policyVersion;
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+        }
       }
     } catch (error) {
       console.warn("[AutoBot] failed to load settings:", error);
