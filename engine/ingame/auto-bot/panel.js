@@ -856,7 +856,8 @@
     };
     set("status", state.status);
     set("lastaction", state.lastAction);
-    set("s-troops", fmt(state.live.troops));
+    // Match the game UI: troop values use ten internal units per displayed troop.
+    set("s-troops", fmt(state.live.troops / 10));
     set("s-gold", fmt(state.live.gold));
     set("s-tiles", fmt(state.live.tiles));
     set("c-spawns", String(state.stats.spawns));
